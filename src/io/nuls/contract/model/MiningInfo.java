@@ -30,14 +30,23 @@ import java.math.BigInteger;
  * @date: 2019-03-07
  */
 public class MiningInfo {
+    // 抵押金额
     private BigInteger depositAmount;
+    // 抵押开始高度
     private long depositHeight;
+    // 总挖矿金额
     private BigInteger totalMining;
+    // 已领取挖矿金额
+    private BigInteger receivedMining;
+    // 挖矿次数
     private int miningCount;
+    // 下次挖矿高度
+    private long nextMiningHeight;
 
     public MiningInfo() {
         this.totalMining = BigInteger.ZERO;
         this.miningCount = 0;
+        this.nextMiningHeight = 0L;
     }
 
     public BigInteger getDepositAmount() {
@@ -64,11 +73,27 @@ public class MiningInfo {
         this.totalMining = totalMining;
     }
 
+    public BigInteger getReceivedMining() {
+        return receivedMining;
+    }
+
+    public void setReceivedMining(BigInteger receivedMining) {
+        this.receivedMining = receivedMining;
+    }
+
     public int getMiningCount() {
         return miningCount;
     }
 
     public void setMiningCount(int miningCount) {
         this.miningCount = miningCount;
+    }
+
+    public long getNextMiningHeight() {
+        return nextMiningHeight;
+    }
+
+    public void setNextMiningHeight(long nextMiningHeight) {
+        this.nextMiningHeight = nextMiningHeight;
     }
 }

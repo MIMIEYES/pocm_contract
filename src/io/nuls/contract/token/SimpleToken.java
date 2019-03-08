@@ -147,7 +147,7 @@ public class SimpleToken extends Ownable implements Contract, Token {
         address1Allowed.put(address2, value);
     }
 
-    private void addBalance(Address address, BigInteger value) {
+    protected void addBalance(Address address, BigInteger value) {
         BigInteger balance = balanceOf(address);
         check(value, "The value must be greater than or equal to 0.");
         check(balance);

@@ -16,5 +16,6 @@
         <SOURCES />
       </library>
     </orderEntry>
+    <orderEntry type="library" name="lombok-1.18.4" level="project" />
   </component>
 </module>
