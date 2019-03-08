@@ -26,9 +26,9 @@ package io.nuls.contract.pocm;
 import io.nuls.contract.model.MiningInfo;
 import io.nuls.contract.sdk.Address;
 import io.nuls.contract.sdk.Block;
-import io.nuls.contract.sdk.BlockHeader;
 import io.nuls.contract.sdk.Msg;
 import io.nuls.contract.sdk.annotation.Payable;
+import io.nuls.contract.sdk.annotation.View;
 import io.nuls.contract.token.SimpleToken;
 
 import java.math.BigDecimal;
@@ -39,6 +39,7 @@ import java.util.Map;
 import static io.nuls.contract.sdk.Utils.emit;
 import static io.nuls.contract.sdk.Utils.require;
 import static io.nuls.contract.util.PocmUtil.toNa;
+import static io.nuls.contract.util.PocmUtil.toNuls;
 
 /**
  * @author: PierreLuo
@@ -48,8 +49,8 @@ public class Pocm extends SimpleToken {
 
     // 合约创建高度
     private final long createHeight;
-    // 价格因子，每抵押XX个NULS，一个奖励发放周期发放一个新token, price = 1/priceSeed
-    private BigInteger priceSeed;
+    // 初始价格，每个NULS可挖出XX个token
+    private BigDecimal initialPrice;
     // 奖励发放周期（参数类型为数字，每过XXXX块发放一次）
     private int awardingCycle;
     // 奖励减半周期（可选参数，若选择，则参数类型为数字，每XXXXX块奖励减半）
@@ -71,18 +72,29 @@ public class Pocm extends SimpleToken {
 
 
     public Pocm(String name, String symbol, BigInteger initialAmount, int decimals,
-                BigDecimal priceSeedNULS, int awardingCycle, int rewardHalvingCycle,
+                BigDecimal price, int awardingCycle, int rewardHalvingCycle,
                 BigDecimal minimumDepositNULS, int minimumLocked, int maximumDepositAddressCount) {
         super(name, symbol, initialAmount, decimals);
+        // 检查 price 小数位不得大于decimals
+        require(checkMaximumDecimals(price, decimals), "最多" + decimals + "位小数");
         this.createHeight = Block.number();
         this.totalDeposit = BigInteger.ZERO;
         this.totalDepositAddressCount = 0;
-        this.priceSeed = toNa(priceSeedNULS);
+        this.initialPrice = price;
         this.awardingCycle = awardingCycle;
         this.rewardHalvingCycle = rewardHalvingCycle;
         this.minimumDeposit = toNa(minimumDepositNULS);
         this.minimumLocked = minimumLocked;
         this.maximumDepositAddressCount = maximumDepositAddressCount;
+    }
+
+    private static boolean checkMaximumDecimals(BigDecimal price, int decimals) {
+        BigInteger a = price.movePointRight(decimals).toBigInteger().multiply(BigInteger.TEN);
+        BigInteger b = price.movePointRight(decimals + 1).toBigInteger();
+        if(a.compareTo(b) != 0) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -134,6 +146,7 @@ public class Pocm extends SimpleToken {
         totalDeposit = totalDeposit.subtract(deposit);
         totalDepositAddressCount -= 1;
         //TODO pierre 退出后是否保留该账户的挖矿记录
+        users.remove(user.toString());
         Msg.sender().transfer(deposit);
         return miningInfo;
     }
@@ -147,6 +160,74 @@ public class Pocm extends SimpleToken {
         this.receive(user, miningInfo);
         return miningInfo;
     }
+
+    /**
+     *  用户挖矿信息
+     */
+    @View
+    public MiningInfo user(Address user) {
+        MiningInfo miningInfo = getMiningInfo(user);
+        BigInteger thisMining = this.calcMining(miningInfo);
+        miningInfo.setTotalMining(miningInfo.getTotalMining().add(thisMining));
+        return miningInfo;
+    }
+
+
+    /**
+     *  当前价格
+     */
+    @View
+    public String currentPrice() {
+        long currentHeight = Block.number();
+        BigDecimal currentPrice = this.calcPriceSeed(currentHeight);
+        return currentPrice.toPlainString() + " " + name() + "/NULS";
+    }
+
+    /**
+     *  初始价格
+     */
+    @View
+    public String initialPrice() {
+        return initialPrice.toPlainString() + " " + name() + "/NULS";
+    }
+
+    @View
+    public long createHeight() {
+        return createHeight;
+    }
+
+    @View
+    public int totalDepositAddressCount() {
+        return totalDepositAddressCount;
+    }
+
+    @View
+    public String totalDeposit() {
+        return toNuls(totalDeposit).toPlainString();
+    }
+
+    @View
+    public long awardingCycle() {
+        return this.awardingCycle;
+    }
+    @View
+    public long rewardHalvingCycle() {
+        return this.rewardHalvingCycle;
+    }
+    @View
+    public BigInteger minimumDeposit() {
+        return this.minimumDeposit;
+    }
+    @View
+    public int minimumLocked() {
+        return this.minimumLocked;
+    }
+    @View
+    public int maximumDepositAddressCount() {
+        return this.maximumDepositAddressCount;
+    }
+
+
 
     private long checkLocked(MiningInfo miningInfo) {
         long currentHeight = Block.number();
@@ -185,35 +266,35 @@ public class Pocm extends SimpleToken {
         long currentHeight = Block.number();
         long nextMiningHeight = miningInfo.getNextMiningHeight();
         long depositHeight = miningInfo.getDepositHeight();
-        BigInteger depositAmount = miningInfo.getDepositAmount();
+        BigDecimal depositAmountNULS = toNuls(miningInfo.getDepositAmount());
         int miningCount = miningInfo.getMiningCount();
         if(nextMiningHeight == 0) {
             nextMiningHeight = depositHeight + awardingCycle + 1;
         }
-        BigInteger currentPriceSeed = this.priceSeed;
+        BigDecimal currentPrice;
         int i = 0;
         while (nextMiningHeight <= currentHeight) {
             i++;
-            currentPriceSeed = calcPriceSeed(nextMiningHeight);
-            mining = mining.add(depositAmount.divide(currentPriceSeed));
+            currentPrice = calcPriceSeed(nextMiningHeight);
+            mining = mining.add(depositAmountNULS.multiply(currentPrice).scaleByPowerOfTen(decimals()).toBigInteger());
             nextMiningHeight += awardingCycle + 1;
         }
         miningInfo.setMiningCount(miningCount + i);
         miningInfo.setNextMiningHeight(nextMiningHeight);
-        if(mining.compareTo(BigInteger.ZERO) > 0) {
-            mining = mining.pow(this.decimals());
-        }
         return mining;
     }
 
-    private BigInteger calcPriceSeed(long nextMiningHeight) {
-        BigInteger d = BigInteger.valueOf(2L);
-        BigInteger currentPriceSeed = this.priceSeed;
-        long triggerH = this.createHeight + this.rewardHalvingCycle + 1;
-        while(triggerH <= nextMiningHeight) {
-            currentPriceSeed = currentPriceSeed.multiply(d);
-            triggerH += this.rewardHalvingCycle + 1;
+    private BigDecimal calcPriceSeed(long currentHeight) {
+        long triggerHeight = this.createHeight + this.rewardHalvingCycle + 1;
+        BigDecimal currentPrice = this.initialPrice;
+        BigDecimal d = null;
+        while(triggerHeight <= currentHeight) {
+            if(d == null) {
+                d = BigDecimal.valueOf(2L);
+            }
+            currentPrice = currentPrice.divide(d);
+            triggerHeight += this.rewardHalvingCycle + 1;
         }
-        return currentPriceSeed;
+        return currentPrice;
     }
 }
