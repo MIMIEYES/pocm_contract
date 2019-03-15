@@ -137,7 +137,7 @@ public class Pocm extends SimpleToken {
         MiningInfo miningInfo = getMiningInfo(user);
 
         long unLockedHeight = checkLocked(miningInfo);
-        require(unLockedHeight != -1, "挖矿锁定中, 解锁高度是 " + unLockedHeight);
+        require(unLockedHeight == -1, "挖矿锁定中, 解锁高度是 " + unLockedHeight);
         // 发放奖励
         this.receive(user, miningInfo);
 
@@ -179,7 +179,7 @@ public class Pocm extends SimpleToken {
     @View
     public String currentPrice() {
         long currentHeight = Block.number();
-        BigDecimal currentPrice = this.calcPriceSeed(currentHeight);
+        BigDecimal currentPrice = this.calcPrice(currentHeight);
         return currentPrice.toPlainString() + " " + name() + "/NULS";
     }
 
@@ -234,8 +234,10 @@ public class Pocm extends SimpleToken {
         long depositHeight = miningInfo.getDepositHeight();
         long unLockedHeight = depositHeight + minimumLocked + 1;
         if(unLockedHeight > currentHeight) {
+            // 锁定中
             return unLockedHeight;
         }
+        // 已解锁
         return -1;
     }
 
@@ -275,7 +277,7 @@ public class Pocm extends SimpleToken {
         int i = 0;
         while (nextMiningHeight <= currentHeight) {
             i++;
-            currentPrice = calcPriceSeed(nextMiningHeight);
+            currentPrice = calcPrice(nextMiningHeight);
             mining = mining.add(depositAmountNULS.multiply(currentPrice).scaleByPowerOfTen(decimals()).toBigInteger());
             nextMiningHeight += awardingCycle + 1;
         }
@@ -284,7 +286,7 @@ public class Pocm extends SimpleToken {
         return mining;
     }
 
-    private BigDecimal calcPriceSeed(long currentHeight) {
+    private BigDecimal calcPrice(long currentHeight) {
         long triggerHeight = this.createHeight + this.rewardHalvingCycle + 1;
         BigDecimal currentPrice = this.initialPrice;
         BigDecimal d = null;
